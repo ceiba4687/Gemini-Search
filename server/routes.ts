@@ -11,13 +11,18 @@ import { setupEnvironment } from "./env";
 const env = setupEnvironment();
 const genAI = new GoogleGenerativeAI(env.GOOGLE_API_KEY);
 const model = genAI.getGenerativeModel({
-  model: "gemini-2.0-flash-exp",
-  generationConfig: {
+  model: "gemini-2.0-flash",
+  generationConfig: {  
     temperature: 0.9,
     topP: 1,
     topK: 1,
-    maxOutputTokens: 2048,
+    maxOutputTokens: 8192,
   },
+  systemInstruction: {
+    // 添加系统指令，要求模型在完成搜索和理解后使用中文回答
+    role: "system", 
+    parts: [{ text: "research in english, respond in chinese." }]
+  }
 });
 
 // Store chat sessions in memory
