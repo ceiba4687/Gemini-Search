@@ -17,7 +17,9 @@ export function Search() {
   const [originalQuery, setOriginalQuery] = useState<string | null>(null);
   const [isFollowUp, setIsFollowUp] = useState(false);
   const [followUpQuery, setFollowUpQuery] = useState<string | null>(null);
-  const [customApiKey, setCustomApiKey] = useState<string | null>(null);
+  const [customApiKey, setCustomApiKey] = useState<string | null>(() => {
+    return localStorage.getItem('gemini_search_api_key');
+  });
   const [needsApiKey, setNeedsApiKey] = useState(false);
   
   // 提取URL中的查询参数
@@ -32,12 +34,13 @@ export function Search() {
   // 添加自定义API Key到请求
   const appendApiKey = (url: string) => {
     if (!customApiKey) return url;
+    console.log('Appending API key to:', url); // 调试日志
     return `${url}${url.includes('?') ? '&' : '?'}apiKey=${encodeURIComponent(customApiKey)}`;
   };
 
   // 修改useQuery依赖关系处理
   const { data, isLoading, error } = useQuery({
-    queryKey: ['search', searchQuery, refetchCounter], // 移除customApiKey依赖
+    queryKey: ['search', searchQuery, refetchCounter, customApiKey], // 添加customApiKey依赖
     queryFn: async () => {
       if (!searchQuery) return null;
       const url = appendApiKey(`/api/search?q=${encodeURIComponent(searchQuery)}`);
@@ -133,6 +136,9 @@ export function Search() {
       setOriginalQuery(null);
       setIsFollowUp(false);
       setSearchQuery(newQuery);
+      
+      // 重置需要API Key状态，避免之前的错误信息干扰
+      setNeedsApiKey(false);
     }
     const newUrl = `/search?q=${encodeURIComponent(newQuery)}`;
     window.history.pushState({}, '', newUrl);
@@ -149,6 +155,13 @@ export function Search() {
     if (apiKey === customApiKey) return;
     
     setCustomApiKey(apiKey);
+    // 保存到localStorage
+    if (apiKey) {
+      localStorage.setItem('gemini_search_api_key', apiKey);
+    } else {
+      localStorage.removeItem('gemini_search_api_key');
+    }
+    
     setSessionId(null); // 清除会话
     
     // 只有当有搜索查询并且之前有结果时才重新搜索
