@@ -9,21 +9,35 @@ import { marked } from "marked";
 import { setupEnvironment } from "./env";
 
 const env = setupEnvironment();
-const genAI = new GoogleGenerativeAI(env.GOOGLE_API_KEY);
-const model = genAI.getGenerativeModel({
-  model: "gemini-2.0-flash",
-  generationConfig: {  
-    temperature: 0.9,
-    topP: 1,
-    topK: 1,
-    maxOutputTokens: 8192,
-  },
-  systemInstruction: {
-    // 添加系统指令，要求模型在完成搜索和理解后使用中文回答
-    role: "system", 
-    parts: [{ text: "research in english, respond in chinese." }]
+const defaultGenAI = new GoogleGenerativeAI(env.GOOGLE_API_KEY);
+
+// 修改getGoogleAI函数，处理没有API密钥的情况
+function getGoogleAI(apiKey?: string) {
+  const key = apiKey || process.env.GOOGLE_API_KEY;
+  
+  if (!key) {
+    throw new Error("No API key provided. Please provide an API key via query parameter or set it in the .env file");
   }
-});
+  
+  return new GoogleGenerativeAI(key);
+}
+
+// 创建模型实例的函数
+function getModel(genAI: GoogleGenerativeAI) {
+  return genAI.getGenerativeModel({
+    model: "gemini-2.0-flash",
+    generationConfig: {  
+      temperature: 0.9,
+      topP: 1,
+      topK: 1,
+      maxOutputTokens: 8192,
+    },
+    systemInstruction: {
+      role: "system", 
+      parts: [{ text: "research in english, respond in chinese." }]
+    }
+  });
+}
 
 // Store chat sessions in memory
 const chatSessions = new Map<string, ChatSession>();
@@ -111,6 +125,7 @@ export function registerRoutes(app: Express): Server {
   app.get("/api/search", async (req, res) => {
     try {
       const query = req.query.q as string;
+      const apiKey = req.query.apiKey as string | undefined;
 
       if (!query) {
         return res.status(400).json({
@@ -118,81 +133,99 @@ export function registerRoutes(app: Express): Server {
         });
       }
 
-      // Create a new chat session with search capability
-      const chat = model.startChat({
-        tools: [
-          {
-            // @ts-ignore - google_search is a valid tool but not typed in the SDK yet
-            google_search: {},
-          },
-        ],
-      });
-
-      // Generate content with search tool
-      const result = await chat.sendMessage(query);
-      const response = await result.response;
-      console.log(
-        "Raw Google API Response:",
-        JSON.stringify(
-          {
-            text: response.text(),
-            candidates: response.candidates,
-            groundingMetadata: response.candidates?.[0]?.groundingMetadata,
-          },
-          null,
-          2
-        )
-      );
-      const text = response.text();
-
-      // Format the response text to proper markdown/HTML
-      const formattedText = await formatResponseToMarkdown(text);
-
-      // Extract sources from grounding metadata
-      const sourceMap = new Map<
-        string,
-        { title: string; url: string; snippet: string }
-      >();
-
-      // Get grounding metadata from response
-      const metadata = response.candidates?.[0]?.groundingMetadata as any;
-      if (metadata) {
-        const chunks = metadata.groundingChunks || [];
-        const supports = metadata.groundingSupports || [];
-
-        chunks.forEach((chunk: any, index: number) => {
-          if (chunk.web?.uri && chunk.web?.title) {
-            const url = chunk.web.uri;
-            if (!sourceMap.has(url)) {
-              // Find snippets that reference this chunk
-              const snippets = supports
-                .filter((support: any) =>
-                  support.groundingChunkIndices.includes(index)
-                )
-                .map((support: any) => support.segment.text)
-                .join(" ");
-
-              sourceMap.set(url, {
-                title: chunk.web.title,
-                url: url,
-                snippet: snippets || "",
-              });
-            }
-          }
+      try {
+        // 使用自定义API Key或默认API Key
+        const genAI = getGoogleAI(apiKey);
+        const model = getModel(genAI);
+        
+        // 继续原来的代码...
+        // Create a new chat session with search capability
+        const chat = model.startChat({
+          tools: [
+            {
+              // @ts-ignore - google_search is a valid tool but not typed in the SDK yet
+              google_search: {},
+            },
+          ],
         });
+
+        // Generate content with search tool
+        const result = await chat.sendMessage(query);
+        const response = await result.response;
+        console.log(
+          "Raw Google API Response:",
+          JSON.stringify(
+            {
+              text: response.text(),
+              candidates: response.candidates,
+              groundingMetadata: response.candidates?.[0]?.groundingMetadata,
+            },
+            null,
+            2
+          )
+        );
+        const text = response.text();
+
+        // Format the response text to proper markdown/HTML
+        const formattedText = await formatResponseToMarkdown(text);
+
+        // Extract sources from grounding metadata
+        const sourceMap = new Map<
+          string,
+          { title: string; url: string; snippet: string }
+        >();
+
+        // Get grounding metadata from response
+        const metadata = response.candidates?.[0]?.groundingMetadata as any;
+        if (metadata) {
+          const chunks = metadata.groundingChunks || [];
+          const supports = metadata.groundingSupports || [];
+
+          chunks.forEach((chunk: any, index: number) => {
+            if (chunk.web?.uri && chunk.web?.title) {
+              const url = chunk.web.uri;
+              if (!sourceMap.has(url)) {
+                // Find snippets that reference this chunk
+                const snippets = supports
+                  .filter((support: any) =>
+                    support.groundingChunkIndices.includes(index)
+                  )
+                  .map((support: any) => support.segment.text)
+                  .join(" ");
+
+                sourceMap.set(url, {
+                  title: chunk.web.title,
+                  url: url,
+                  snippet: snippets || "",
+                });
+              }
+            }
+          });
+        }
+
+        const sources = Array.from(sourceMap.values());
+
+        // Generate a session ID and store the chat
+        const sessionId = Math.random().toString(36).substring(7);
+        chatSessions.set(sessionId, chat);
+
+        res.json({
+          sessionId,
+          summary: formattedText,
+          sources,
+        });
+      } catch (error) {
+        // API密钥相关错误
+        if (error instanceof Error && error.message.includes("API key")) {
+          return res.status(401).json({
+            error: "API key error",
+            message: error.message,
+            requiresApiKey: true
+          });
+        }
+        // 其他错误重新抛出
+        throw error;
       }
-
-      const sources = Array.from(sourceMap.values());
-
-      // Generate a session ID and store the chat
-      const sessionId = Math.random().toString(36).substring(7);
-      chatSessions.set(sessionId, chat);
-
-      res.json({
-        sessionId,
-        summary: formattedText,
-        sources,
-      });
     } catch (error: any) {
       console.error("Search error:", error);
       res.status(500).json({
@@ -205,7 +238,7 @@ export function registerRoutes(app: Express): Server {
   // Follow-up endpoint - continues existing chat session
   app.post("/api/follow-up", async (req, res) => {
     try {
-      const { sessionId, query } = req.body;
+      const { sessionId, query, apiKey } = req.body;
 
       if (!sessionId || !query) {
         return res.status(400).json({

@@ -3,6 +3,7 @@ import { useLocation } from 'wouter';
 import { Search } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Logo } from '@/components/Logo';
+import { ApiKeyInput } from '@/components/ApiKeyInput';
 
 export function Home() {
   const [query, setQuery] = useState('');
@@ -18,6 +19,9 @@ export function Home() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background">
       <ThemeToggle />
+      <div className="absolute top-4 right-4">
+        <ApiKeyInput />
+      </div>
       <div className="w-full max-w-3xl px-4 animate-fade-in">
         <div className="flex flex-col items-center mb-8">
           <Logo className="mb-6" />
@@ -59,7 +63,7 @@ export function Home() {
         <div className="mt-8 text-center text-sm text-gray-500 dark:text-gray-400 animate-fade-in space-y-1">
           <div>Powered by Gemini 2.0</div>
           <div>
-            Created by <a href="http://x.com/ammaar" target="_blank" rel="noopener noreferrer" className="hover:text-gray-800 dark:hover:text-gray-300 transition-colors">@ammaar</a>
+            Created by <a href="https://github.com/ceiba4687" target="_blank" rel="noopener noreferrer" className="hover:text-gray-800 dark:hover:text-gray-300 transition-colors">@ceiba4687</a>
           </div>
         </div>
       </div>
