@@ -25,12 +25,15 @@ function getGoogleAI(apiKey?: string) {
 // 创建模型实例的函数
 function getModel(genAI: GoogleGenerativeAI) {
   return genAI.getGenerativeModel({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.5-flash-preview-04-17",
     generationConfig: {  
       temperature: 0.3,
       topP: 0,
       topK: 1,
       maxOutputTokens: 8192,
+      thinkingConfig: {
+        thinkingBudget:8192,
+      }
     },
     systemInstruction: {
       role: "system", 
