@@ -27,12 +27,12 @@ function getModel(genAI: GoogleGenerativeAI) {
   return genAI.getGenerativeModel({
     model: "gemini-2.5-flash-preview-04-17",
     generationConfig: {  
-      temperature: 0.3,
-      topP: 0,
-      topK: 1,
+      temperature: 0.15,
+      topP: 0.8,
+      topK: 30,
       maxOutputTokens: 8192,
       thinkingConfig: {
-        thinkingBudget:8192,
+        thinkingBudget: 8192,
       }
     },
     systemInstruction: {

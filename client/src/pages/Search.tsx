@@ -9,14 +9,33 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SourceList } from '@/components/SourceList';
+import { ThemeToggle } from '@/components/ThemeToggle';
+
+// 添加本地存储的键名
+const SEARCH_STATE_KEY = 'gemini_search_state';
 
 export function Search() {
   const [location, setLocation] = useLocation();
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [currentResults, setCurrentResults] = useState<any>(null);
-  const [originalQuery, setOriginalQuery] = useState<string | null>(null);
-  const [isFollowUp, setIsFollowUp] = useState(false);
-  const [followUpQuery, setFollowUpQuery] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(() => {
+    const savedState = localStorage.getItem(SEARCH_STATE_KEY);
+    return savedState ? JSON.parse(savedState).sessionId : null;
+  });
+  const [currentResults, setCurrentResults] = useState<any>(() => {
+    const savedState = localStorage.getItem(SEARCH_STATE_KEY);
+    return savedState ? JSON.parse(savedState).currentResults : null;
+  });
+  const [originalQuery, setOriginalQuery] = useState<string | null>(() => {
+    const savedState = localStorage.getItem(SEARCH_STATE_KEY);
+    return savedState ? JSON.parse(savedState).originalQuery : null;
+  });
+  const [isFollowUp, setIsFollowUp] = useState(() => {
+    const savedState = localStorage.getItem(SEARCH_STATE_KEY);
+    return savedState ? JSON.parse(savedState).isFollowUp : false;
+  });
+  const [followUpQuery, setFollowUpQuery] = useState<string | null>(() => {
+    const savedState = localStorage.getItem(SEARCH_STATE_KEY);
+    return savedState ? JSON.parse(savedState).followUpQuery : null;
+  });
   const [customApiKey, setCustomApiKey] = useState<string | null>(() => {
     return localStorage.getItem('gemini_search_api_key');
   });
@@ -28,19 +47,40 @@ export function Search() {
     return searchParams.get('q') || '';
   };
   
-  const [searchQuery, setSearchQuery] = useState(getQueryFromUrl);
+  const [searchQuery, setSearchQuery] = useState(() => {
+    const savedState = localStorage.getItem(SEARCH_STATE_KEY);
+    return savedState ? JSON.parse(savedState).searchQuery : getQueryFromUrl();
+  });
   const [refetchCounter, setRefetchCounter] = useState(0);
+
+  // 保存搜索状态到本地存储
+  const saveSearchState = () => {
+    const state = {
+      sessionId,
+      currentResults,
+      originalQuery,
+      isFollowUp,
+      followUpQuery,
+      searchQuery
+    };
+    localStorage.setItem(SEARCH_STATE_KEY, JSON.stringify(state));
+  };
+
+  // 在状态变化时保存
+  useEffect(() => {
+    saveSearchState();
+  }, [sessionId, currentResults, originalQuery, isFollowUp, followUpQuery, searchQuery]);
 
   // 添加自定义API Key到请求
   const appendApiKey = (url: string) => {
     if (!customApiKey) return url;
-    console.log('Appending API key to:', url); // 调试日志
+    console.log('Appending API key to:', url);
     return `${url}${url.includes('?') ? '&' : '?'}apiKey=${encodeURIComponent(customApiKey)}`;
   };
 
   // 修改useQuery依赖关系处理
   const { data, isLoading, error } = useQuery({
-    queryKey: ['search', searchQuery, refetchCounter, customApiKey], // 添加customApiKey依赖
+    queryKey: ['search', searchQuery, refetchCounter, customApiKey],
     queryFn: async () => {
       if (!searchQuery) return null;
       const url = appendApiKey(`/api/search?q=${encodeURIComponent(searchQuery)}`);
@@ -48,10 +88,8 @@ export function Search() {
       
       const result = await response.json();
       
-      // 处理API密钥错误
       if (!response.ok) {
         if (result.requiresApiKey) {
-          // 可以在这里设置一个状态来显示API密钥输入表单
           setNeedsApiKey(true);
           throw new Error(result.message || 'API key required');
         }
@@ -136,8 +174,6 @@ export function Search() {
       setOriginalQuery(null);
       setIsFollowUp(false);
       setSearchQuery(newQuery);
-      
-      // 重置需要API Key状态，避免之前的错误信息干扰
       setNeedsApiKey(false);
     }
     const newUrl = `/search?q=${encodeURIComponent(newQuery)}`;
@@ -149,24 +185,19 @@ export function Search() {
     await followUpMutation.mutateAsync(newFollowUpQuery);
   };
 
-  // 修改handleApiKeyChange函数来防止循环
   const handleApiKeyChange = (apiKey: string | null) => {
-    // 避免重复设置相同的值
     if (apiKey === customApiKey) return;
     
     setCustomApiKey(apiKey);
-    // 保存到localStorage
     if (apiKey) {
       localStorage.setItem('gemini_search_api_key', apiKey);
     } else {
       localStorage.removeItem('gemini_search_api_key');
     }
     
-    setSessionId(null); // 清除会话
+    setSessionId(null);
     
-    // 只有当有搜索查询并且之前有结果时才重新搜索
     if (searchQuery && (data || currentResults)) {
-      // 使用setTimeout分离状态更新和重新获取
       setTimeout(() => {
         setRefetchCounter(c => c + 1);
       }, 0);
@@ -192,8 +223,9 @@ export function Search() {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.3 }}
-      className="min-h-screen bg-background"
+      className="min-h-screen bg-background relative"
     >
+      <ThemeToggle />
       <motion.div
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -225,7 +257,6 @@ export function Search() {
             />
           </div>
           
-          {/* API Key 按钮 */}
           <div className="hidden sm:block">
             <ApiKeyInput onApiKeyChange={handleApiKeyChange} />
           </div>
@@ -240,7 +271,6 @@ export function Search() {
             transition={{ duration: 0.3 }}
             className="flex flex-col items-stretch"
           >
-            {/* 移动端显示API Key按钮 */}
             <div className="block sm:hidden mb-3">
               <ApiKeyInput onApiKeyChange={handleApiKeyChange} />
             </div>
